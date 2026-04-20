@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+
+<meta charset="UTF-8">
+<title>Checador - Joe Rodriguez</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<style>
+
+body{
+font-family:Arial;
+background:#0f172a;
+color:white;
+text-align:center;
+margin:0;
+}
+
+.card{
+background:#1e293b;
+padding:20px;
+margin:20px;
+border-radius:15px;
+}
+
+input{
+padding:15px;
+width:90%;
+border:none;
+border-radius:10px;
+margin:10px;
+font-size:18px;
+}
+
+button{
+padding:15px;
+width:90%;
+font-size:18px;
+border:none;
+border-radius:10px;
+background:#22c55e;
+color:white;
+margin:10px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h2>📱 Checador- Joe Rodriguez</h2>
+
+<!-- LOGIN -->
+<div class="card" id="loginBox">
+
+<h3>Ingresar</h3>
+
+<input type="password" id="pin" placeholder="PIN">
+<button onclick="login()">Entrar</button>
+
+<h3 id="msgLogin"></h3>
+
+</div>
+
+<!-- PANEL -->
+<div class="card" id="panel" style="display:none;">
+
+<h3 id="nombre"></h3>
+
+<button id="btn" onclick="checar()">Cargando...</button>
+<button onclick="logout()">Salir</button>
+
+<h3 id="msg"></h3>
+
+</div>
+
+<script>
+
+// 🔥 CONFIG FIREBASE
+const firebaseConfig={
+ apiKey: "AIzaSyC4FVokHFRbbTc4rBifNyt5bvOX2CuzkWw",
+  authDomain: "calificaciones-9f753.firebaseapp.com",
+  databaseURL: "https://calificaciones-9f753-default-rtdb.firebaseio.com",
+  projectId: "calificaciones-9f753",
+  storageBucket: "calificaciones-9f753.firebasestorage.app",
+  messagingSenderId: "907008005737",
+  appId: "1:907008005737:web:3069998b0bad883cc574f8"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db=firebase.firestore();
+
+let empleado=null;
+let estado="entrada";
+
+
+// 🔐 LOGIN
+function login(){
+
+const pinInput=document.getElementById("pin").value.trim();
+
+if(!pinInput){
+msgLogin.innerHTML="⚠️ Ingresa PIN";
+return;
+}
+
+db.collection("empleados").get()
+.then(snap=>{
+
+let encontrado=false;
+
+snap.forEach(doc=>{
+
+const data=doc.data();
+
+if(String(data.pin) === String(pinInput)){
+empleado=data.nombre;
+encontrado=true;
+}
+
+});
+
+if(!encontrado){
+msgLogin.innerHTML="❌ PIN incorrecto";
+return;
+}
+
+loginBox.style.display="none";
+panel.style.display="block";
+nombre.innerHTML="👤 "+empleado;
+
+verificarEstado();
+
+});
+
+}
+
+
+// 📍 GPS
+function obtenerUbicacion(){
+return new Promise((resolve,reject)=>{
+navigator.geolocation.getCurrentPosition(
+pos=>resolve(pos.coords),
+err=>reject(err)
+);
+});
+}
+
+
+// 🔎 ESTADO
+function verificarEstado(){
+
+db.collection("asistencia")
+.where("nombre","==",empleado)
+.where("salida","==",null)
+.get()
+.then(snap=>{
+
+if(snap.empty){
+estado="entrada";
+btn.innerHTML="Registrar Entrada";
+}else{
+estado="salida";
+btn.innerHTML="Registrar Salida";
+}
+
+});
+
+}
+
+
+// 🔘 BOTÓN
+async function checar(){
+
+msg.innerHTML="Procesando...";
+
+try{
+
+const ubicacion=await obtenerUbicacion();
+
+if(estado==="entrada"){
+
+await db.collection("asistencia").add({
+nombre:empleado,
+entrada:new Date(),
+salida:null,
+lat:ubicacion.latitude,
+lng:ubicacion.longitude
+});
+
+msg.innerHTML="✅ Entrada registrada";
+estado="salida";
+btn.innerHTML="Registrar Salida";
+
+}else{
+
+const snap=await db.collection("asistencia")
+.where("nombre","==",empleado)
+.where("salida","==",null)
+.get();
+
+for(const doc of snap.docs){
+await db.collection("asistencia").doc(doc.id).update({
+salida:new Date()
+});
+}
+
+msg.innerHTML="🚪 Salida registrada";
+estado="entrada";
+btn.innerHTML="Registrar Entrada";
+
+}
+
+}catch(e){
+msg.innerHTML="❌ Activa GPS";
+}
+
+}
+
+
+// 🔓 LOGOUT
+function logout(){
+location.reload();
+}
+
+</script>
+
+</body>
+</html>
