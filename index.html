@@ -46,6 +46,10 @@ color:white;
 margin:10px;
 }
 
+button:disabled{
+background:#64748b;
+}
+
 </style>
 
 </head>
@@ -54,41 +58,30 @@ margin:10px;
 
 <h2>📱 Checador - Joe Rodriguez</h2>
 
-<!-- LOGIN -->
 <div class="card" id="loginBox">
-
 <h3>Ingresar</h3>
-
 <input type="password" id="pin" placeholder="PIN">
 <button onclick="login()">Entrar</button>
-
 <h3 id="msgLogin"></h3>
-
 </div>
 
-<!-- PANEL -->
 <div class="card" id="panel" style="display:none;">
-
 <h3 id="nombre"></h3>
-
 <button id="btn" onclick="checar()">Cargando...</button>
 <button onclick="logout()">Salir</button>
-
 <h3 id="msg"></h3>
-
 </div>
 
 <script>
 
-// 🔥 CONFIG FIREBASE
 const firebaseConfig={
  apiKey: "AIzaSyC4FVokHFRbbTc4rBifNyt5bvOX2CuzkWw",
-  authDomain: "calificaciones-9f753.firebaseapp.com",
-  databaseURL: "https://calificaciones-9f753-default-rtdb.firebaseio.com",
-  projectId: "calificaciones-9f753",
-  storageBucket: "calificaciones-9f753.firebasestorage.app",
-  messagingSenderId: "907008005737",
-  appId: "1:907008005737:web:3069998b0bad883cc574f8"
+ authDomain: "calificaciones-9f753.firebaseapp.com",
+ databaseURL: "https://calificaciones-9f753-default-rtdb.firebaseio.com",
+ projectId: "calificaciones-9f753",
+ storageBucket: "calificaciones-9f753.firebasestorage.app",
+ messagingSenderId: "907008005737",
+ appId: "1:907008005737:web:3069998b0bad883cc574f8"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -96,9 +89,10 @@ const db=firebase.firestore();
 
 let empleado=null;
 let estado="entrada";
+let horaEntradaLocal=null;
+let intervalo=null; // 🔥 contador
 
 
-// 💾 SESIÓN PERSISTENTE
 window.onload = function(){
 
 const usuarioGuardado = localStorage.getItem("empleado");
@@ -111,6 +105,12 @@ loginBox.style.display="none";
 panel.style.display="block";
 nombre.innerHTML="👤 "+empleado;
 
+const entradaGuardada = localStorage.getItem("horaEntrada");
+if(entradaGuardada){
+horaEntradaLocal = new Date(parseInt(entradaGuardada));
+iniciarContador(); // 🔥 iniciar si ya había entrada
+}
+
 verificarEstado();
 
 }
@@ -118,7 +118,6 @@ verificarEstado();
 }
 
 
-// 🔐 LOGIN
 function login(){
 
 const pinInput=document.getElementById("pin").value.trim();
@@ -135,7 +134,6 @@ let encontrado=false;
 
 snap.forEach(doc=>{
 const data=doc.data();
-
 if(String(data.pin) === String(pinInput)){
 empleado=data.nombre;
 encontrado=true;
@@ -160,21 +158,44 @@ verificarEstado();
 }
 
 
-// 📍 GPS (NO BLOQUEA)
 function obtenerUbicacion(){
 return new Promise((resolve,reject)=>{
-
 navigator.geolocation.getCurrentPosition(
 pos=>resolve(pos.coords),
 err=>reject(err),
 {enableHighAccuracy:false,timeout:5000,maximumAge:60000}
 );
-
 });
 }
 
 
-// 🔎 ESTADO
+// 🔥 CONTADOR EN VIVO
+function iniciarContador(){
+
+clearInterval(intervalo);
+
+intervalo = setInterval(()=>{
+
+if(!horaEntradaLocal) return;
+
+const ahora = new Date();
+const diff = (ahora - horaEntradaLocal) / 1000;
+
+if(diff < 60){
+const restante = Math.ceil(60 - diff);
+msg.innerHTML = "⏳ Espera " + restante + " segundos para salida";
+btn.disabled = true;
+}else{
+msg.innerHTML = "✅ Ya puedes registrar salida";
+btn.disabled = false;
+clearInterval(intervalo);
+}
+
+},1000);
+
+}
+
+
 function verificarEstado(){
 
 db.collection("asistencia")
@@ -186,9 +207,13 @@ db.collection("asistencia")
 if(snap.empty){
 estado="entrada";
 btn.innerHTML="Registrar Entrada";
+btn.disabled=false;
 }else{
 estado="salida";
 btn.innerHTML="Registrar Salida";
+if(horaEntradaLocal){
+iniciarContador(); // 🔥 activa contador
+}
 }
 
 });
@@ -196,23 +221,19 @@ btn.innerHTML="Registrar Salida";
 }
 
 
-// 🔘 BOTÓN SIN BLOQUEO
 async function checar(){
 
 msg.innerHTML="Procesando...";
 
-// 🕒 FECHA
 const ahora = new Date();
 const fechaHora = ahora.toLocaleString();
 
-// 📍 GPS en segundo plano
 let ubicacion = {latitude:0, longitude:0};
 
 obtenerUbicacion()
 .then(pos=>ubicacion=pos)
 .catch(()=>{});
 
-// ⏳ pequeña pausa UI
 await new Promise(r=>setTimeout(r,500));
 
 try{
@@ -227,9 +248,21 @@ lat:ubicacion.latitude,
 lng:ubicacion.longitude
 });
 
+horaEntradaLocal = ahora;
+localStorage.setItem("horaEntrada", ahora.getTime());
+
+iniciarContador(); // 🔥 arranca contador
+
 msg.innerHTML="✅ Entrada registrada<br><b>"+fechaHora+"</b>";
 
 }else{
+
+const diff = (ahora - horaEntradaLocal) / 1000;
+
+if(diff < 60){
+msg.innerHTML="⏳ Aún no puedes salir";
+return;
+}
 
 const snap=await db.collection("asistencia")
 .where("nombre","==",empleado)
@@ -242,6 +275,10 @@ salida:ahora
 });
 }
 
+localStorage.removeItem("horaEntrada");
+horaEntradaLocal = null;
+clearInterval(intervalo);
+
 msg.innerHTML="🚪 Salida registrada<br><b>"+fechaHora+"</b>";
 
 }
@@ -249,18 +286,17 @@ msg.innerHTML="🚪 Salida registrada<br><b>"+fechaHora+"</b>";
 verificarEstado();
 
 }catch(e){
-
 console.error(e);
 msg.innerHTML="❌ Error al registrar";
-
 }
 
 }
 
 
-// 🔓 LOGOUT
 function logout(){
 localStorage.removeItem("empleado");
+localStorage.removeItem("horaEntrada");
+clearInterval(intervalo);
 location.reload();
 }
 
